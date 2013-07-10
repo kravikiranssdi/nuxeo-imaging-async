@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component name="org.nuxeo.ecm.platform.picture.listeners.async">
+
+  <require>org.nuxeo.ecm.platform.picture.listeners</require>
+  <extension target="org.nuxeo.ecm.core.event.EventServiceComponent" point="listener">
+    <!-- replace default listener by new one -->
+    <listener name="pictureChangedListener" async="false" postCommit="false"
+      class="org.nuxeo.ecm.platform.picture.async.PictureChangedListener" priority="20">
+      <event>aboutToCreate</event>
+      <event>beforeDocumentModification</event>
+    </listener>
+  </extension>
+
+   <extension target="org.nuxeo.ecm.core.work.service" point="queues">
+    <queue id="PictureConversion">
+      <name>PictureConversion</name>
+      <maxThreads>2</maxThreads>
+      <!-- clear completed work instances older than one hour -->
+      <clearCompletedAfterSeconds>3600</clearCompletedAfterSeconds>
+    </queue>
+  </extension>
+
+</component>

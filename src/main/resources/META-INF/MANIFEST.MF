@@ -1,0 +1,7 @@
+Bundle-Name: Nuxeo Picture Imaging Core Async patch
+Bundle-Vendor: Nuxeo
+Eclipse-LazyStart: true
+Bundle-Version: 0.0.0.SNAPSHOT
+Bundle-ManifestVersion: 2
+Nuxeo-Component: OSGI-INF/listeners-contrib.xml 
+Bundle-SymbolicName: org.nuxeo.ecm.platform.picture.core.async;singleton=true
