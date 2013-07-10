@@ -24,19 +24,28 @@ public class PictureViewsComputerWorker extends AbstractWork {
     protected final String repoName;
     protected final DocumentRef ref;
     protected final String xpath;
-
+    protected final int retry;
     protected LoginContext loginContext;
 
     protected CoreSession session;
 
-    public PictureViewsComputerWorker(String repoName, DocumentRef ref, String xpath) {
+    protected PictureViewsComputerWorker(String repoName, DocumentRef ref, String xpath, int retry) {
         super();
         this.repoName=repoName;
         this.ref=ref;
         this.xpath=xpath;
+        this.retry = retry;
     }
 
-    public CoreSession initSession(String repositoryName) throws Exception {
+
+    public PictureViewsComputerWorker(String repoName, DocumentRef ref, String xpath) {
+        this(repoName, ref, xpath, 0);
+    }
+
+    public CoreSession initSessionIfNeeded(String repositoryName) throws Exception {
+        if (loginContext!=null && session !=null) {
+            return session;
+        }
         try {
             loginContext = Framework.login();
         } catch (LoginException e) {
@@ -63,8 +72,6 @@ public class PictureViewsComputerWorker extends AbstractWork {
         return "generate picture views for Document " + ref;
     }
 
-
-
     @Override
     public String getCategory() {
         return "PictureConversion";
@@ -72,7 +79,7 @@ public class PictureViewsComputerWorker extends AbstractWork {
 
     @Override
     public void work() throws Exception {
-        initSession(repoName);
+        initSessionIfNeeded(repoName);
 
         if (session.exists(ref)) {
             DocumentModel pictureDoc = session.getDocument(ref);
@@ -83,9 +90,11 @@ public class PictureViewsComputerWorker extends AbstractWork {
                 bh.setBlob(fileProp.getValue(Blob.class));
                 session.saveDocument(pictureDoc);
             } else {
+                setStatus("Target Document is read only");
                 log.warn("Can not compute view for doc " + ref + " since it is read only");
             }
         } else {
+            setStatus("Can not find target Document");
             log.warn("Can not compute view for doc " + ref + " since it no longer exists !");
         }
     }

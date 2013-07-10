@@ -6,15 +6,22 @@
     <!-- replace default listener by new one -->
     <listener name="pictureChangedListener" async="false" postCommit="false"
       class="org.nuxeo.ecm.platform.picture.async.PictureChangedListener" priority="20">
-      <event>aboutToCreate</event>
       <event>beforeDocumentModification</event>
+      <event>documentCreated</event>
     </listener>
+
+    <listener name="pictureChangedTrigger" async="true" postCommit="false"
+      class="org.nuxeo.ecm.platform.picture.async.ConversionWorkTrigger" priority="20">
+      <event>updatePictureViews</event>
+    </listener>
+
   </extension>
 
    <extension target="org.nuxeo.ecm.core.work.service" point="queues">
-    <queue id="PictureConversion">
-      <name>PictureConversion</name>
+    <queue id="IOIntensive">
+      <name>IO intensive</name>
       <maxThreads>2</maxThreads>
+      <category>PictureConversion</category>
       <!-- clear completed work instances older than one hour -->
       <clearCompletedAfterSeconds>3600</clearCompletedAfterSeconds>
     </queue>

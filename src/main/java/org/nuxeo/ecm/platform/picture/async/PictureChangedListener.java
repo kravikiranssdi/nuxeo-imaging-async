@@ -21,12 +21,15 @@ import static org.nuxeo.ecm.platform.picture.api.ImagingDocumentConstants.PICTUR
 
 import org.nuxeo.ecm.core.api.ClientException;
 import org.nuxeo.ecm.core.api.DocumentModel;
+import org.nuxeo.ecm.core.api.event.DocumentEventTypes;
 import org.nuxeo.ecm.core.api.model.Property;
 import org.nuxeo.ecm.core.event.Event;
 import org.nuxeo.ecm.core.event.EventContext;
 import org.nuxeo.ecm.core.event.EventListener;
+import org.nuxeo.ecm.core.event.EventService;
 import org.nuxeo.ecm.core.event.impl.DocumentEventContext;
 import org.nuxeo.ecm.platform.picture.api.adapters.AbstractPictureAdapter;
+import org.nuxeo.runtime.api.Framework;
 
 /**
  * Listener updating the views of a Picture if the main Blob has changed.
@@ -45,26 +48,48 @@ public class PictureChangedListener implements EventListener {
             return;
         }
 
-        Boolean block = (Boolean) event.getContext().getProperty(DISABLE_PICTURECHANGE_LISTENER);
+        Boolean block = (Boolean) event.getContext().getProperty(
+                DISABLE_PICTURECHANGE_LISTENER);
         if (block != null && block) {
             // ignore the event - we are blocked by the caller
             return;
         }
 
-
         DocumentEventContext docCtx = (DocumentEventContext) ctx;
+
+        if (needsRecompute(docCtx, event.getName())) {
+            triggerConversion(docCtx);
+        }
+
+    }
+
+    protected boolean needsRecompute(DocumentEventContext docCtx,
+            String eventName) throws ClientException {
         DocumentModel doc = docCtx.getSourceDocument();
         if (doc.hasFacet(PICTURE_FACET)) {
             Property fileProp = doc.getProperty("file:content");
+            if (DocumentEventTypes.DOCUMENT_CREATED.equals(eventName)
+                    && fileProp != null && fileProp.getValue()!=null) {
+                // no need to check for dirty fields
+                return true;
+            }
             Property viewsProp = doc.getProperty(AbstractPictureAdapter.VIEWS_PROPERTY);
             if (fileProp.isDirty()) {
                 // if the views are dirty, assume they're up to date
                 if (viewsProp == null || !viewsProp.isDirty()) {
-
-
+                    return true;
                 }
             }
         }
+        return false;
     }
 
+    protected void triggerConversion(DocumentEventContext docCtx)
+            throws ClientException {
+        docCtx.getProperties().put(ConversionWorkTrigger.XPATH_PROPERTY,
+                "file:content");
+        Event trigger = docCtx.newEvent(ConversionWorkTrigger.TRIGGER_EVENT);
+        EventService eventService = Framework.getLocalService(EventService.class);
+        eventService.fireEvent(trigger);
+    }
 }
