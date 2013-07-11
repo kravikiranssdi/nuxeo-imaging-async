@@ -3,5 +3,6 @@ Bundle-Vendor: Nuxeo
 Eclipse-LazyStart: true
 Bundle-Version: 0.0.0.SNAPSHOT
 Bundle-ManifestVersion: 2
-Nuxeo-Component: OSGI-INF/listeners-contrib.xml 
+Nuxeo-Component: OSGI-INF/listeners-contrib.xml,
+ OSGI-INF/filemanager-plugins-contrib.xml
 Bundle-SymbolicName: org.nuxeo.ecm.platform.picture.core.async;singleton=true
