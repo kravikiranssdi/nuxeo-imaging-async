@@ -1,11 +1,16 @@
 package org.nuxeo.ecm.platform.picture.async;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Map;
+
 import javax.security.auth.login.LoginContext;
 import javax.security.auth.login.LoginException;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.nuxeo.ecm.core.api.Blob;
+import org.nuxeo.ecm.core.api.ClientException;
 import org.nuxeo.ecm.core.api.CoreInstance;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
@@ -15,7 +20,9 @@ import org.nuxeo.ecm.core.api.model.Property;
 import org.nuxeo.ecm.core.api.repository.Repository;
 import org.nuxeo.ecm.core.api.repository.RepositoryManager;
 import org.nuxeo.ecm.core.work.AbstractWork;
+import org.nuxeo.ecm.platform.picture.api.adapters.PictureResourceAdapter;
 import org.nuxeo.runtime.api.Framework;
+import org.nuxeo.runtime.transaction.TransactionHelper;
 
 public class PictureViewsComputerWorker extends AbstractWork {
 
@@ -42,12 +49,22 @@ public class PictureViewsComputerWorker extends AbstractWork {
         this(repoName, ref, xpath, 0);
     }
 
+
+    @Override
+    protected boolean isTransactional() {
+        // we manage AdHoc TX
+        return false;
+    }
+
+
     public CoreSession initSessionIfNeeded(String repositoryName) throws Exception {
         if (loginContext!=null && session !=null) {
             return session;
         }
         try {
-            loginContext = Framework.login();
+            if (loginContext==null) {
+                loginContext = Framework.login();
+            }
         } catch (LoginException e) {
             log.error("Cannot log in", e);
         }
@@ -79,24 +96,74 @@ public class PictureViewsComputerWorker extends AbstractWork {
 
     @Override
     public void work() throws Exception {
-        initSessionIfNeeded(repoName);
 
-        if (session.exists(ref)) {
-            DocumentModel pictureDoc = session.getDocument(ref);
-            if (!pictureDoc.isImmutable()) {
-                Property fileProp = pictureDoc.getProperty(xpath);
-                pictureDoc.putContextData(PictureChangedListener.DISABLE_PICTURECHANGE_LISTENER, true);
-                BlobHolder bh = pictureDoc.getAdapter(BlobHolder.class);
-                bh.setBlob(fileProp.getValue(Blob.class));
-                session.saveDocument(pictureDoc);
+
+        DocumentModel workingDocument = null;
+
+        try  {
+            TransactionHelper.startTransaction();
+            initSessionIfNeeded(repoName);
+            if (session.exists(ref)) {
+                DocumentModel pictureDoc = session.getDocument(ref);
+                if (!pictureDoc.isImmutable()) {
+                    pictureDoc.detach(true);
+                    workingDocument = pictureDoc;
+                } else {
+                    setStatus("Target Document is read only");
+                    log.warn("Can not compute view for doc " + ref + " since it is read only");
+                }
             } else {
-                setStatus("Target Document is read only");
-                log.warn("Can not compute view for doc " + ref + " since it is read only");
+                setStatus("Can not find target Document");
+                log.warn("Can not compute view for doc " + ref + " since it no longer exists !");
             }
-        } else {
-            setStatus("Can not find target Document");
-            log.warn("Can not compute view for doc " + ref + " since it no longer exists !");
+        } catch (Exception e) {
+            TransactionHelper.setTransactionRollbackOnly();
         }
+        finally {
+            TransactionHelper.commitOrRollbackTransaction();
+            if (session!=null) {
+                CoreInstance.getInstance().close(session);
+                session = null;
+            }
+        }
+
+        // processing outside of TX
+        if (workingDocument!=null) {
+            setStatus("Running conversion");
+            Property fileProp = workingDocument.getProperty(xpath);
+            workingDocument.putContextData(PictureChangedListener.DISABLE_PICTURECHANGE_LISTENER, true);
+
+            // upload blob and create views
+            ArrayList<Map<String, Object>> pictureTemplates = null; // use default !
+            PictureResourceAdapter picture = workingDocument.getAdapter(PictureResourceAdapter.class);
+            Blob blob = (Blob) fileProp.getValue();
+            String filename = blob == null ? null : blob.getFilename();
+            String title = (String) workingDocument.getPropertyValue("dc:title"); // re-set
+            try {
+                picture.createPicture(blob, filename, title, pictureTemplates);
+            } catch (IOException e) {
+                throw new ClientException(e.toString(), e);
+            }
+
+        } else {
+            setStatus("Nothing to process");
+            return;
+        }
+
+        try  {
+            setStatus("saving document");
+            TransactionHelper.startTransaction();
+            initSessionIfNeeded(repoName);
+            workingDocument.putContextData(PictureChangedListener.DISABLE_PICTURECHANGE_LISTENER, true);
+            session.saveDocument(workingDocument);
+            setStatus("Picture views updated ok");
+        } catch (Exception e) {
+            TransactionHelper.setTransactionRollbackOnly();
+        }
+        finally {
+            TransactionHelper.commitOrRollbackTransaction();
+        }
+
     }
 
     @Override
