@@ -15,7 +15,6 @@ import org.nuxeo.ecm.core.api.CoreInstance;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
 import org.nuxeo.ecm.core.api.DocumentRef;
-import org.nuxeo.ecm.core.api.blobholder.BlobHolder;
 import org.nuxeo.ecm.core.api.model.Property;
 import org.nuxeo.ecm.core.api.repository.Repository;
 import org.nuxeo.ecm.core.api.repository.RepositoryManager;
@@ -23,32 +22,50 @@ import org.nuxeo.ecm.core.work.AbstractWork;
 import org.nuxeo.ecm.platform.picture.api.adapters.PictureResourceAdapter;
 import org.nuxeo.runtime.api.Framework;
 import org.nuxeo.runtime.transaction.TransactionHelper;
+/**
+ * Worker that handles conversion processing.
+ *
+ * Actual processing code is inside the {@link PictureResourceAdapter}, but the worker splits the works in 3 phases :
+ *
+ * <ul>
+ *   <li>Fetch Document and data: inside a transaction</li>
+ *   <li>Run the conversions : ouside of TX, running on detached {@link DocumentModel}</li>
+ *   <li>Save Document with new views : inside a transaction</li>
+ * </ul>
+ *
+ * @author <a href="mailto:tdelprat@nuxeo.com">Tiry</a>
+ *
+ */
 
 public class PictureViewsComputerWorker extends AbstractWork {
 
     protected static final Log log = LogFactory.getLog(PictureViewsComputerWorker.class);
 
     protected final String repoName;
+
     protected final DocumentRef ref;
+
     protected final String xpath;
+
     protected final int retry;
+
     protected LoginContext loginContext;
 
     protected CoreSession session;
 
-    protected PictureViewsComputerWorker(String repoName, DocumentRef ref, String xpath, int retry) {
+    protected PictureViewsComputerWorker(String repoName, DocumentRef ref,
+            String xpath, int retry) {
         super();
-        this.repoName=repoName;
-        this.ref=ref;
-        this.xpath=xpath;
+        this.repoName = repoName;
+        this.ref = ref;
+        this.xpath = xpath;
         this.retry = retry;
     }
 
-
-    public PictureViewsComputerWorker(String repoName, DocumentRef ref, String xpath) {
+    public PictureViewsComputerWorker(String repoName, DocumentRef ref,
+            String xpath) {
         this(repoName, ref, xpath, 0);
     }
-
 
     @Override
     protected boolean isTransactional() {
@@ -56,13 +73,13 @@ public class PictureViewsComputerWorker extends AbstractWork {
         return false;
     }
 
-
-    public CoreSession initSessionIfNeeded(String repositoryName) throws Exception {
-        if (loginContext!=null && session !=null) {
+    public CoreSession initSessionIfNeeded(String repositoryName)
+            throws Exception {
+        if (loginContext != null && session != null) {
             return session;
         }
         try {
-            if (loginContext==null) {
+            if (loginContext == null) {
                 loginContext = Framework.login();
             }
         } catch (LoginException e) {
@@ -71,7 +88,8 @@ public class PictureViewsComputerWorker extends AbstractWork {
         RepositoryManager repositoryManager = Framework.getLocalService(RepositoryManager.class);
         if (repositoryManager == null) {
             // would happen if only low-level repo is initialized
-            throw new RuntimeException("RepositoryManager service not available");
+            throw new RuntimeException(
+                    "RepositoryManager service not available");
         }
         Repository repository;
         if (repositoryName != null) {
@@ -97,10 +115,9 @@ public class PictureViewsComputerWorker extends AbstractWork {
     @Override
     public void work() throws Exception {
 
-
         DocumentModel workingDocument = null;
 
-        try  {
+        try {
             TransactionHelper.startTransaction();
             initSessionIfNeeded(repoName);
             if (session.exists(ref)) {
@@ -110,31 +127,31 @@ public class PictureViewsComputerWorker extends AbstractWork {
                     workingDocument = pictureDoc;
                 } else {
                     setStatus("Target Document is read only");
-                    log.warn("Can not compute view for doc " + ref + " since it is read only");
+                    log.warn("Can not compute view for doc " + ref
+                            + " since it is read only");
                 }
             } else {
                 setStatus("Can not find target Document");
-                log.warn("Can not compute view for doc " + ref + " since it no longer exists !");
+                log.warn("Can not compute view for doc " + ref
+                        + " since it no longer exists !");
             }
         } catch (Exception e) {
             TransactionHelper.setTransactionRollbackOnly();
-        }
-        finally {
+        } finally {
             TransactionHelper.commitOrRollbackTransaction();
-            if (session!=null) {
+            if (session != null) {
                 CoreInstance.getInstance().close(session);
                 session = null;
             }
         }
 
         // processing outside of TX
-        if (workingDocument!=null) {
+        if (workingDocument != null) {
             setStatus("Running conversion");
             Property fileProp = workingDocument.getProperty(xpath);
-            workingDocument.putContextData(PictureChangedListener.DISABLE_PICTURECHANGE_LISTENER, true);
-
             // upload blob and create views
-            ArrayList<Map<String, Object>> pictureTemplates = null; // use default !
+            ArrayList<Map<String, Object>> pictureTemplates = null; // use
+                                                                    // default !
             PictureResourceAdapter picture = workingDocument.getAdapter(PictureResourceAdapter.class);
             Blob blob = (Blob) fileProp.getValue();
             String filename = blob == null ? null : blob.getFilename();
@@ -150,17 +167,17 @@ public class PictureViewsComputerWorker extends AbstractWork {
             return;
         }
 
-        try  {
+        try {
             setStatus("saving document");
             TransactionHelper.startTransaction();
             initSessionIfNeeded(repoName);
-            workingDocument.putContextData(PictureChangedListener.DISABLE_PICTURECHANGE_LISTENER, true);
+            workingDocument.putContextData(
+                    PictureChangedListener.DISABLE_PICTURECHANGE_LISTENER, true);
             session.saveDocument(workingDocument);
             setStatus("Picture views updated ok");
         } catch (Exception e) {
             TransactionHelper.setTransactionRollbackOnly();
-        }
-        finally {
+        } finally {
             TransactionHelper.commitOrRollbackTransaction();
         }
 

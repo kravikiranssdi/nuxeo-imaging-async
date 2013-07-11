@@ -32,10 +32,15 @@ import org.nuxeo.ecm.platform.picture.api.adapters.AbstractPictureAdapter;
 import org.nuxeo.runtime.api.Framework;
 
 /**
- * Listener updating the views of a Picture if the main Blob has changed.
+ * Listener overriding the default listener : instead of running the actual
+ * conversion, it simply fires an event to schedule an async listener.
  *
- * @author <a href="mailto:troger@nuxeo.com">Thomas Roger</a>
- * @since 5.5
+ * Going through an async listener to trigger the conversion worker is needed to
+ * ensure that at the time the worker is run the Document has be
+ * created/saved/commited.
+ *
+ * @author <a href="mailto:tdelprat@nuxeo.com">Tiry</a>
+ *
  */
 public class PictureChangedListener implements EventListener {
 
@@ -69,7 +74,7 @@ public class PictureChangedListener implements EventListener {
         if (doc.hasFacet(PICTURE_FACET)) {
             Property fileProp = doc.getProperty("file:content");
             if (DocumentEventTypes.DOCUMENT_CREATED.equals(eventName)
-                    && fileProp != null && fileProp.getValue()!=null) {
+                    && fileProp != null && fileProp.getValue() != null) {
                 // no need to check for dirty fields
                 return true;
             }

@@ -9,6 +9,13 @@ import org.nuxeo.ecm.core.event.impl.DocumentEventContext;
 import org.nuxeo.ecm.core.work.api.WorkManager;
 import org.nuxeo.runtime.api.Framework;
 
+/**
+ * Async listener, triggered by the {@link PictureChangedListener}.
+ * Schedule the conversion work.
+ *
+ * @author <a href="mailto:tdelprat@nuxeo.com">Tiry</a>
+ *
+ */
 public class ConversionWorkTrigger implements PostCommitFilteringEventListener {
 
     public static final String TRIGGER_EVENT ="updatePictureViews";
